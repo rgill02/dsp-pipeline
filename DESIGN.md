@@ -5,6 +5,7 @@ I will describe the design by describing it alongside my initial use case: a son
 ## Use Case
 
 I have a side scan sonar that I am developing and I need a flexible, configurable, and efficient DSP pipeline to process said sonar data. The high level diagram of the needed sonar dsp chain is below.
+
 ```mermaid
 flowchart TD
 
@@ -23,7 +24,56 @@ The ADC is sampling data at 10 MHz. To start development I may save this data di
 
 ## Architecture
 
+Every pipeline will consist of a source, one or more processing strategies, and one sink. When the pipeline is run the data will be passed between blocks via a queue so that it can take advantage of multiple cores and run each block in its own thread/process.
+
+```mermaid
+flowchart LR
+
+A(Source) -->|Queue| B[Processing Strategy]
+B -->|Queue| C[Processing Strategy]
+C -->|Queue| D(Sink)
+```
+
 ### Source
 We will have a generic source class that generates data (I guess it fits into the adapter pattern). It could be a file reader, a client or server catching streaming data, etc. It will take in a config in order to set itself up correctly. In the case of a self descriptive file then it will be a reader that opens the file, reads the metadata, and the configures itself. In the case of the streaming data, it might need to catch a piece of data first to know what kind of data its getting to configure itself. It could also be another pipeline for example to take non pulse compressed data and spit out pulse compressed data for a pipeline that does not contain a pulse compressor. The source will also be given a callback function to call once its configured describing its configuration. So lets say we want to read a data file, do some processing, and then save the semi processed output to an intermediate file. If we have a self descriptive file, or file with metadata such as "recording date" we may want to pass that along to the writer so it can add that to the intermediate file. So the flow is we create the source, it then grabs the first bit of data, configures itself, lets everyone know about its config, and then passes that first bit of data to who is next in the pipeline. Its kind of a one time observer pattern. The source will also one function for grabbing data: one to read the next bit of data which is what will be used in the pipeline. Every read it will output the data itself which is most likely a numpy array, and the metadata which could be a dictionary that has every other bit of information that goes along with the data that we want to pass along. 
 
+```mermaid
+classDiagram
+Source <|-- FileReader
+Source <|-- StreamingServer
+Source : init(config, config_cb)
+Source : read_next()
+Source : close()
+```
+
+### Processing Strategy
+The processing strategy will be any sort of processing function. It will take in an initial config. But could also configure itself on the first data it sees. To do that it will have a process function, a config function, and a proc_and_config function. The process function is what you will override to implement your processing algorithm. The config function is what you will override to configure the block based on the first set of data. The proc_and_config function is what the pipeline will call which will call the config function on the first set of data, and process on the first set and all the rest. All three of these will take in 
+
+```mermaid
+classDiagram
+Proc_Strat <|-- PulseCompressor
+Proc_Strat <|-- Beamformer
+Proc_Strat : init(config)
+Proc_Strat : config(data, metadata)
+Proc_Strat : process(data, metadata)
+Proc_Strat : proc_and_config(data, metadata)
+```
+
+### Sink
+The sink will be similar to the processing strategy where it can configure itself fully with the initial config or with the first bit of data to come in. However, it will also have a config from source that the source callback will connect to.
+
+```mermaid
+classDiagram
+Sink <|-- FileWriter
+Sink <|-- UDPPublisher
+Sink : init(config)
+Sink : config(data, metadata)
+Sink : config_from_source(config)
+Sink : write(data, metadata)
+Sink : write_and_config(data, metadata)
+Sink : close()
+```
+
+### Pipeline
+A pipeline is the object to contain all the blocks. It will have one source, one sink, and one or more processing strategies. It will create the queues between each block and will handle passing the data between them. It will also conglomerate statistics from all the blocks and report a status.
 
