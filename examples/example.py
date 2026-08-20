@@ -4,44 +4,63 @@
 #Standard imports
 import os
 import sys
+import time
 
 #Our imports
-#EXAMPLE_DIR = os.path.abspath(os.path.dirname(__file__))
-#PROJ_DIR = os.path.abspath(os.path.join(EXAMPLE_DIR, ".."))
-#LIB_DIR = os.path.abspath(os.path.join(PROJ_DIR, "src", "dsppipeline"))
-#sys.path.append(LIB_DIR)
-from dsppipeline import Stage
+from dsppipeline import Stage, Source, Sink
 from dsppipeline import Pipeline
 
 ################################################################################
 ###                              Example Stages                              ###
 ################################################################################
-class Add_1_Stage(Stage):
+class Example_Source(Source):
 	"""
-	Expects a number in, adds 1 to that number, and outputs
+	Generates incremental numbers
 	"""
-	def process(self, data_in):
-		return data_in + 1
+	def __init__(self):
+		super().__init__(10)
+		self.count = 0
 
-class Mult_By_2_Stage(Stage):
+	def process(self, data_in=None):
+		self.count += 1
+		return self.count
+
+class Add_Sub(Stage):
 	"""
-	Expects a number in, multiplies it by 2, and outputs
+	Adds or subtracts a number from the incoming data
 	"""
+	def __init__(self, x):
+		self.x = x
+		super().__init__()
+
 	def process(self, data_in):
-		return data_in * 2
+		return data_in + self.x
+
+class Example_Sink(Sink):
+	"""
+	Prints received numbers out to stdout
+	"""
+	def __init__(self, name):
+		self.name = name
+		super().__init__()
+
+	def process(self, data_in=None):
+		print("%s: " % self.name, data_in)
 
 ################################################################################
 ###                             Example Pipeline                             ###
 ################################################################################
 class Example_Pipeline(Pipeline):
 	"""
-	Expects a number in, adds 1, multiplies by 2, and then adds 1 again
+	Generates incremental numbers, multiplies by 2, and prints them to stdout
 	"""
 	def __init__(self):
 		stages = [
-			Add_1_Stage(),
-			Mult_By_2_Stage(),
-			Add_1_Stage()
+			Example_Source(),
+			[
+				[Add_Sub(0.1), Example_Sink("Add")],
+				[Add_Sub(-0.2), Example_Sink("Sub")]
+			]
 		]
 		super().__init__(stages)
 
@@ -51,20 +70,12 @@ class Example_Pipeline(Pipeline):
 if __name__ == "__main__":
 	#Create pipeline and run it
 	pipeline = Example_Pipeline()
-	outq = pipeline.get_output_q()
 	pipeline.start()
 
-	#Feed test data
-	n = 10
-	for ii in range(n):
-		pipeline.put(ii)
+	time.sleep(0.1)
 
-	#Pull output data
-	for ii in range(n):
-		print("Output %d: %d" % (ii, outq.get()))
-
-	#Shutdown
 	pipeline.stop()
+
 
 ################################################################################
 ###                               End of File                                ###
