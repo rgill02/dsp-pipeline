@@ -75,6 +75,29 @@ class Stage(ABC):
 		raise NotImplementedError("This method must be overridden")
 
 	############################################################################
+	def cleanup(self):
+		"""
+		To be overridden to perform any needed cleanup
+		"""
+		pass
+
+	############################################################################
+	def die(self):
+		"""
+		Call the cleanup method and do our own cleanup and die
+		"""
+		for outq in self.outqs:
+			outq.put(None)
+
+		proc_time = self.avg_proc_time()
+		if proc_time is not None:
+			print("%s Average Proc Time: %.3f ms" % (self.__class__.__name__, proc_time / 1e-3))
+
+		self.inq.close()
+
+		self.cleanup()
+
+	############################################################################
 	def run(self):
 		"""
 		This method is called by the code running the pipeline. It pulls data 
@@ -91,8 +114,6 @@ class Stage(ABC):
 			#Pull data from input queue
 			data_in = self.inq.get()
 			if data_in is None:
-				for outq in self.outqs:
-					outq.put(None)
 				break
 
 			#Process the data
@@ -108,7 +129,7 @@ class Stage(ABC):
 			for outq in self.outqs:
 				outq.put(data_out)
 
-		print("%s Average Proc Time: %.3f ms" % (self.__class__.__name__, self.avg_proc_time() / 1e-3))
+		self.die()
 
 	############################################################################
 	def avg_proc_time(self):
@@ -120,6 +141,8 @@ class Stage(ABC):
 		avg_time : float
 			Average process time in seconds
 		"""
+		if self.num_proc == 0:
+			return None
 		return self.duration / self.num_proc
 
 ################################################################################
@@ -166,12 +189,10 @@ class Source(Stage):
 					time.sleep(0.1)
 				outq.put(data_out)
 
-			if self.inq.qsize() > 0:
-				for outq in self.outqs:
-					outq.put(None)
+			if self.inq.qsize() > 0 or data_out is None:
 				break
 
-		print("%s Average Proc Time: %.3f ms" % (self.__class__.__name__, self.avg_proc_time() / 1e-3))
+		self.die()		
 
 	############################################################################
 	def send_stop(self):
@@ -212,7 +233,7 @@ class Sink(Stage):
 			#Increment count
 			self.num_proc += 1
 
-		print("%s Average Proc Time: %.3f ms" % (self.__class__.__name__, self.avg_proc_time() / 1e-3))
+		self.die()
 
 ################################################################################
 ###                               End of File                                ###

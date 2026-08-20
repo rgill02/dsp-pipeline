@@ -135,6 +135,10 @@ class Pipeline(ABC):
 		self.stages[0].send_stop()
 
 		#Join all processes
+		self.wait()
+
+	############################################################################
+	def wait(self):
 		for p in self.procs:
 			p.join()
 
